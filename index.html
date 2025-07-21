@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>線上文件編輯器</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .toolbar-button {
+            @apply px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition duration-200 ease-in-out;
+        }
+
+        .toolbar-select {
+            @apply px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition duration-200 ease-in-out;
+        }
+
+        .toolbar-color-picker {
+            @apply w-10 h-10 p-1 border border-gray-300 rounded-md cursor-pointer;
+        }
+
+        .animate-fade-in-down {
+            animation: fadeInDown 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Loading spinner styles */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-100 flex flex-col items-center p-4">
+
+    <!-- Message display area -->
+    <div id="message-area" class="fixed top-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-md z-50 animate-fade-in-down hidden flex items-center space-x-2">
+        <span id="message-text"></span>
+        <div id="loading-spinner" class="spinner hidden"></div>
+    </div>
+
+    <div class="w-full max-w-4xl bg-white rounded-xl shadow-lg p-6 flex flex-col space-y-4">
+        <!-- Header and File Operations -->
+        <div class="flex flex-col sm:flex-row justify-between items-center border-b pb-4 mb-4">
+            <h1 class="text-3xl font-bold text-gray-800 mb-4 sm:mb-0">文件編輯器</h1>
+            <div class="flex space-x-3">
+                <!-- Upload Button -->
+                <input
+                    type="file"
+                    id="fileInput"
+                    class="hidden"
+                    onchange="handleFileUpload(event)"
+                    accept=".txt,.html,.htm,.css,.js,.json,.xml,.md"
+                />
+                <label
+                    for="fileInput"
+                    class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out cursor-pointer transform hover:scale-105"
+                >
+                    上傳文件
+                </label>
+                <!-- Download Button -->
+                <button
+                    onclick="handleFileDownload()"
+                    class="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition duration-300 ease-in-out transform hover:scale-105"
+                >
+                    下載文件
+                </button>
+            </div>
+        </div>
+
+        <!-- Editor Toolbar -->
+        <div class="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg shadow-sm mb-4">
+            <!-- Formatting Buttons -->
+            <button onclick="formatText('bold')" class="toolbar-button font-bold">B</button>
+            <button onclick="formatText('italic')" class="toolbar-button italic">I</button>
+            <button onclick="formatText('underline')" class="toolbar-button underline">U</button>
+            <select
+                onchange="formatText('fontSize', this.value)"
+                class="toolbar-select"
+                id="fontSizeSelect"
+            >
+                <option value="" disabled selected>字體大小</option>
+                <option value="1">小</option>
+                <option value="2">中</option>
+                <option value="3">大</option>
+                <option value="4">特大</option>
+                <option value="5">巨大</option>
+                <option value="6">超巨大</option>
+                <option value="7">極大</option>
+            </select>
+            <input
+                type="color"
+                onchange="formatText('foreColor', this.value)"
+                class="toolbar-color-picker"
+                title="字體顏色"
+            />
+            <button onclick="formatText('justifyLeft')" class="toolbar-button">左對齊</button>
+            <button onclick="formatText('justifyCenter')" class="toolbar-button">置中</button>
+            <button onclick="formatText('justifyRight')" class="toolbar-button">右對齊</button>
+            <!-- Undo/Redo Buttons -->
+            <button onclick="handleUndo()" class="toolbar-button" id="undoButton">撤銷</button>
+            <button onclick="handleRedo()" class="toolbar-button" id="redoButton">重做</button>
+            <!-- Gemini API Buttons -->
+            <button onclick="handleSummarize()" class="toolbar-button bg-purple-500 text-white hover:bg-purple-600">✨ 摘要內容</button>
+            <button onclick="handleContinueWriting()" class="toolbar-button bg-indigo-500 text-white hover:bg-indigo-600">✨ 繼續寫作</button>
+        </div>
+
+        <!-- Editor Area -->
+        <div
+            id="editor-area"
+            contenteditable="true"
+            oninput="handleInput()"
+            class="flex-grow min-h-[400px] p-6 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-auto text-gray-800 leading-relaxed"
+            style="-webkit-user-modify: read-write-plaintext-only;"
+        >
+        </div>
+
+        <!-- Footer with file name -->
+        <div class="mt-4 text-center text-gray-600 text-sm">
+            當前文件: <span class="font-semibold" id="fileNameDisplay">untitled.txt</span>
+            <p class="text-xs mt-1">
+                提示: 此編輯器主要支援純文字檔案 (.txt, .html, .css, .js, .json, .xml, .md 等)。
+                對於其他文件類型 (例如 .docx, .pages)，請複製並貼上內容。
+                下載時，HTML 檔案會保留富文字格式，其他文件將保存為純文字。
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for editor state
+        let editorContent = '';
+        let fileName = 'untitled.txt';
+        let fileType = 'txt'; // Default to 'txt'
+        let history = ['']; // Initial empty state
+        let historyIndex = 0;
+        let messageTimeout;
+        const apiKey = ""; // If you want to use models other than gemini-2.0-flash or imagen-3.0-generate-002, provide an API key here. Otherwise, leave this as-is.
+
+        // DOM elements
+        const editorArea = document.getElementById('editor-area');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const messageArea = document.getElementById('message-area');
+        const messageText = document.getElementById('message-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const undoButton = document.getElementById('undoButton');
+        const redoButton = document.getElementById('redoButton');
+
+        // Function to update the history stack for undo/redo
+        function updateHistory(content) {
+            // Slice history to current index + 1 to discard future states
+            history = history.slice(0, historyIndex + 1);
+            // Add current content to history
+            history.push(content);
+            // Move history index to the new end
+            historyIndex = history.length - 1;
+            updateUndoRedoButtons();
+        }
+
+        // Handler for content changes in the editor
+        function handleInput() {
+            const currentContent = editorArea.innerHTML;
+            editorContent = currentContent;
+            // Update history only if content actually changed
+            if (currentContent !== history[historyIndex]) {
+                updateHistory(currentContent);
+            }
+        }
+
+        // Function to execute document commands (bold, italic, etc.)
+        function formatText(command, value = null) {
+            document.execCommand(command, false, value);
+            // After formatting, update the editor content and history
+            editorContent = editorArea.innerHTML;
+            updateHistory(editorContent);
+            editorArea.focus(); // Keep focus on editor
+            // Reset font size select to default after applying
+            if (command === 'fontSize') {
+                document.getElementById('fontSizeSelect').value = '';
+            }
+        }
+
+        // Handler for file upload
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                editorContent = content;
+                editorArea.innerHTML = content;
+                updateHistory(content); // Update history after loading new content
+
+                // Set file name and type based on uploaded file
+                fileName = file.name;
+                fileNameDisplay.textContent = fileName;
+                const fileExtension = file.name.split('.').pop().toLowerCase();
+                fileType = fileExtension; // Store the actual file extension
+
+                showMessage(`檔案 "${file.name}" 已成功上傳。`);
+            };
+
+            // Read file as text
+            reader.readAsText(file);
+        }
+
+        // Handler for file download
+        function handleFileDownload() {
+            if (!editorArea.innerText.trim()) { // Check if editor has content
+                showMessage('編輯器內容為空，無法下載。');
+                return;
+            }
+
+            let contentToSave;
+            let downloadMimeType;
+            let downloadFileName = fileName;
+
+            // Determine content and MIME type based on fileType
+            if (fileType === 'html' || fileType === 'htm') {
+                contentToSave = editorArea.innerHTML; // Preserve rich text for HTML
+                downloadMimeType = 'text/html;charset=utf-8';
+                if (!downloadFileName.endsWith('.html') && !downloadFileName.endsWith('.htm')) {
+                    downloadFileName = downloadFileName.replace(/\.[^/.]+$/, "") + '.html';
+                }
+            } else {
+                contentToSave = editorArea.innerText; // Plain text for others
+                downloadMimeType = 'text/plain;charset=utf-8';
+                // Ensure .txt extension if it's not a known rich text type, or if original was not .txt
+                const knownTextTypes = ['txt', 'md', 'css', 'js', 'json', 'xml'];
+                if (!knownTextTypes.includes(fileType)) {
+                     downloadFileName = downloadFileName.replace(/\.[^/.]+$/, "") + '.txt';
+                }
+            }
+
+            const blob = new Blob([contentToSave], { type: downloadMimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = downloadFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showMessage('文件已成功下載。');
+        }
+
+        // Function to handle undo operation
+        function handleUndo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                const content = history[historyIndex];
+                editorContent = content;
+                editorArea.innerHTML = content;
+                showMessage('已撤銷上一步操作。');
+            } else {
+                showMessage('無法再撤銷。');
+            }
+            updateUndoRedoButtons();
+        }
+
+        // Function to handle redo operation
+        function handleRedo() {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                const content = history[historyIndex];
+                editorContent = content;
+                editorArea.innerHTML = content;
+                showMessage('已重做上一步操作。');
+            } else {
+                showMessage('無法再重做。');
+            }
+            updateUndoRedoButtons();
+        }
+
+        // Function to update the disabled state of undo/redo buttons
+        function updateUndoRedoButtons() {
+            undoButton.disabled = historyIndex === 0;
+            redoButton.disabled = historyIndex === history.length - 1;
+        }
+
+        // Function to display temporary messages
+        function showMessage(msg, showLoadingIndicator = false) {
+            clearTimeout(messageTimeout); // Clear any existing timeout
+            messageText.textContent = msg;
+            messageArea.classList.remove('hidden');
+            if (showLoadingIndicator) {
+                loadingSpinner.classList.remove('hidden');
+            } else {
+                loadingSpinner.classList.add('hidden');
+                messageTimeout = setTimeout(() => {
+                    messageArea.classList.add('hidden');
+                }, 3000); // Message disappears after 3 seconds
+            }
+        }
+
+        // Function to hide the message area and loading spinner
+        function hideMessage() {
+            clearTimeout(messageTimeout);
+            messageArea.classList.add('hidden');
+            loadingSpinner.classList.add('hidden');
+        }
+
+        // --- Gemini API Integration ---
+
+        // Generic function to call Gemini API
+        async function callGeminiAPI(prompt) {
+            showMessage('正在處理中...', true); // Show loading indicator
+            try {
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    hideMessage(); // Hide loading and message
+                    return text;
+                } else {
+                    console.error("Unexpected API response structure:", result);
+                    showMessage('API 回應格式不正確。');
+                    return null;
+                }
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                showMessage('呼叫 Gemini API 時發生錯誤。');
+                return null;
+            } finally {
+                hideMessage(); // Ensure loading is hidden even on error
+            }
+        }
+
+        // Handle Summarize Content
+        async function handleSummarize() {
+            const content = editorArea.innerText.trim(); // Get plain text for summary
+            if (content.length < 50) {
+                showMessage('內容太短，無法進行摘要。請輸入至少 50 個字。');
+                return;
+            }
+
+            const prompt = `請總結以下文件內容，並以條列式呈現重點：\n\n${content}`;
+            const summary = await callGeminiAPI(prompt);
+
+            if (summary) {
+                // Display summary in a temporary message box or a simple alert alternative
+                showMessage(`摘要完成：\n\n${summary}`, false);
+            }
+        }
+
+        // Handle Continue Writing
+        async function handleContinueWriting() {
+            const content = editorArea.innerText.trim(); // Get plain text to continue from
+            if (content.length === 0) {
+                showMessage('請先輸入一些內容，才能繼續寫作。');
+                return;
+            }
+
+            const prompt = `請根據以下內容繼續寫作，並保持原有的寫作風格和語氣：\n\n${content}`;
+            const continuation = await callGeminiAPI(prompt);
+
+            if (continuation) {
+                // Append the generated text to the editor
+                editorArea.innerHTML += `<p>${continuation.replace(/\n/g, '<br>')}</p>`; // Add as a new paragraph
+                editorContent = editorArea.innerHTML; // Update global content
+                updateHistory(editorContent); // Add to history
+                showMessage('寫作已繼續。');
+            }
+        }
+
+        // Initialize editor content and history on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            editorArea.innerHTML = editorContent;
+            updateHistory(editorContent); // Add initial empty state to history
+            updateUndoRedoButtons(); // Initialize button states
+        });
+    </script>
+</body>
+</html>
