@@ -159,7 +159,9 @@
         let history = ['']; // Initial empty state
         let historyIndex = 0;
         let messageTimeout;
-        const apiKey = ""; // If you want to use models other than gemini-2.0-flash or imagen-3.0-generate-002, provide an API key here. Otherwise, leave this as-is.
+        // IMPORTANT: Replace 'YOUR_GEMINI_API_KEY_HERE' with your actual Gemini API Key when deploying to GitHub Pages or Cloudflare.
+        // If testing within the Canvas environment, you can leave it as an empty string.
+        const apiKey = "AIzaSyDF5A1yYLe8UT5OR7NXFCGJtggNA9v6bOI"; 
 
         // DOM elements
         const editorArea = document.getElementById('editor-area');
@@ -333,6 +335,12 @@
         // Generic function to call Gemini API
         async function callGeminiAPI(prompt) {
             showMessage('正在處理中...', true); // Show loading indicator
+            if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE") { // Added check for placeholder
+                showMessage('請先設定您的 Gemini API 金鑰，才能使用此功能。');
+                hideMessage(); // Hide loading spinner immediately
+                return null;
+            }
+
             try {
                 let chatHistory = [];
                 chatHistory.push({ role: "user", parts: [{ text: prompt }] });
@@ -362,7 +370,12 @@
                 showMessage('呼叫 Gemini API 時發生錯誤。');
                 return null;
             } finally {
-                hideMessage(); // Ensure loading is hidden even on error
+                // Ensure loading is hidden even on error, but keep message if it's an error message
+                if (!messageArea.classList.contains('hidden') && messageText.textContent.includes('錯誤')) {
+                    // Keep error message visible for a bit longer
+                } else {
+                    hideMessage();
+                }
             }
         }
 
@@ -378,7 +391,6 @@
             const summary = await callGeminiAPI(prompt);
 
             if (summary) {
-                // Display summary in a temporary message box or a simple alert alternative
                 showMessage(`摘要完成：\n\n${summary}`, false);
             }
         }
